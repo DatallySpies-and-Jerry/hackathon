@@ -225,9 +225,27 @@ if page == "Présentation":
 
 # Autres onglets
 elif page == "Chiffres clés":
-    st.title("Chiffres clés")
-    st.write("Contenu des chiffres clés")
+    col1, col2 = st.columns([12, 1])
+    with col1:
+        st.markdown('<div class="logo-container">', unsafe_allow_html=True)
+        st.markdown('<h1>Chiffres clés</h1>', unsafe_allow_html=True)
+    with col2:
+        st.markdown('<div class="logo-container">', unsafe_allow_html=True)
+        logo_path = "DatallySpies_Logo.png"  # Remplacez par le chemin de votre logo
+        logo = load_image(logo_path)
+        if logo:
+            st.image(logo, width=150)
+        st.markdown('</div>', unsafe_allow_html=True)
     
 elif page == "Réponse à notre problématique":
-    st.title("Réponse à notre problématique")
-    st.write("Contenu de la réponse à la problématique")
+    col1, col2 = st.columns([12, 1])
+    with col1:
+        st.markdown('<div class="logo-container">', unsafe_allow_html=True)
+        st.markdown('<h1>Réponse à notre problématique</h1>', unsafe_allow_html=True)
+    with col2:
+        st.markdown('<div class="logo-container">', unsafe_allow_html=True)
+        logo_path = "DatallySpies_Logo.png"  # Remplacez par le chemin de votre logo
+        logo = load_image(logo_path)
+        if logo:
+            st.image(logo, width=150)
+        st.markdown('</div>', unsafe_allow_html=True)
