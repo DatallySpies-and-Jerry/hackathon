@@ -1,12 +1,9 @@
 import streamlit as st
 from PIL import Image
-import time
-import os
-import sys
-import logging
-import warnings
 import streamlit.components.v1 as components
 import datetime
+import pandas as pd
+import numpy as np
 
 # Configuration de la page
 st.set_page_config(
@@ -249,3 +246,8 @@ elif page == "Réponse à notre problématique":
         if logo:
             st.image(logo, width=150)
         st.markdown('</div>', unsafe_allow_html=True)
+    # Ajoutez ici le contenu de la page "Réponse à notre problématique"
+    # Import des données :
+    payments = pd.read_csv("cleaning_data/olist_order_payments_dataset.csv")
+    reviews = pd.read_csv("cleaning_data/olist_order_reviews_dataset.csv")
+    orders = pd.read_csv("cleaning_data/olist_orders_dataset.csv")

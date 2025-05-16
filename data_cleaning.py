@@ -35,3 +35,6 @@ for c in l_ch_todelete:
     df_reviews["review_comment_message"] = df_reviews["review_comment_message"].astype(str).apply(lambda x : x.replace(c, ""))
 
 print(df_reviews.dropna())
+df_reviews.to_csv("cleaning_data/olist_order_reviews_dataset.csv", index=False)
+df_order.to_csv("cleaning_data/olist_orders_dataset.csv", index=False)
+df_payments.to_csv("cleaning_data/olist_order_payments_dataset.csv", index=False)
