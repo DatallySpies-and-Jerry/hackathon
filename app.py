@@ -251,3 +251,7 @@ elif page == "Réponse à notre problématique":
     payments = pd.read_csv("cleaning_data/olist_order_payments_dataset.csv")
     reviews = pd.read_csv("cleaning_data/olist_order_reviews_dataset.csv")
     orders = pd.read_csv("cleaning_data/olist_orders_dataset.csv")
+    items = pd.read_csv("cleaning_data/olist_order_items_dataset.csv")
+    geolocations = pd.read_csv("cleaning_data/olist_geolocation_dataset.csv")
+    customers = pd.read_csv("cleaning_data/olist_customers_dataset.csv")
+    # Nuage de mots
