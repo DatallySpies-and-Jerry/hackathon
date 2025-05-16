@@ -254,4 +254,7 @@ elif page == "Réponse à notre problématique":
     items = pd.read_csv("cleaning_data/olist_order_items_dataset.csv")
     geolocations = pd.read_csv("cleaning_data/olist_geolocation_dataset.csv")
     customers = pd.read_csv("cleaning_data/olist_customers_dataset.csv")
+    products = pd.read_csv("cleaning_data/olist_products_dataset.csv")
+    sellers = pd.read_csv("cleaning_data/olist_sellers_dataset.csv")
+    products_categories = pd.read_csv("cleaning_data/olist_product_category_name_translation.csv")
     # Nuage de mots
