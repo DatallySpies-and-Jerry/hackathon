@@ -288,7 +288,7 @@ elif page == "🗺️ Exploration":
     ca = df_final3['price'].sum()
     ca_formatted = f"{round(ca):,}".replace(",", " ")
 
-    m1, m2, m3, m4, m5, m6 = st.columns((0.5,1,1,1,1,0.5))
+    m1, m2, m3, m4, m5, m6 = st.columns((0.3,1,1,1,1,0.3))
     m1.write('')
     m2.metric(label ='Nombre total de clients',value = nb_clients_uniques)
     m3.metric(label ='Nombre total de commandes',value = nb_commandes)
@@ -798,7 +798,10 @@ elif page == "🔎 Déchiffrage des avis":
     comments_to_use = df_filtered['clean_comment'].fillna('')
 
     # Analyse des données filtrées
-    st.markdown("## 📊 Analyse des commentaires")
+    st.markdown(
+    "<h2 style='color:#4B0082; font-size:22px; font-weight:bold;'>📊 Analyse des commentaires</h2>",
+    unsafe_allow_html=True)
+    # st.markdown("## 📊 Analyse des commentaires")
 
     # Créer les onglets pour les différentes visualisations
     tab1, tab2, tab3 = st.tabs(["📊 Distribution des sentiments", "☁️ Nuages de mots", "📈 Analyse comparative"])
@@ -827,21 +830,7 @@ elif page == "🔎 Déchiffrage des avis":
         fig.update_traces(hovertemplate='Sentiment: %{label}<br>Nb commentaires: %{value}<extra></extra>')
         fig.update_layout(showlegend=False)
         st.plotly_chart(fig, use_container_width=True)
-        
-        # Distribution des scores
-        score_counts = df_filtered['review_score'].value_counts().sort_index().reset_index()
-        score_counts.columns = ['Score', 'Nombre']
-        
-        fig = px.bar(score_counts, x='Score', y='Nombre', 
-                    title='Distribution des scores des avis',
-                    color='Score', color_continuous_scale=custom_color_scale)
-        fig.update_layout(xaxis_title='Score', yaxis_title='Nombre de commentaires')
-        fig.update_traces(texttemplate='%{y}', textposition='outside')
-        fig.update_traces(marker=dict(line=dict(width=1, color='DarkSlateGrey')))
-        fig.update_traces(textfont_size=12)
-        fig.update_traces(hovertemplate='Score: %{x}<br>Nb commentaires: %{y}<extra></extra>')
-        fig.update_layout(xaxis={'categoryorder':'total descending'})
-        st.plotly_chart(fig, use_container_width=True)
+
 
     with tab2:
         st.markdown("### Nuages de mots par sentiment")
