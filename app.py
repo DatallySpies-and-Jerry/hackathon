@@ -3,6 +3,9 @@ from PIL import Image
 import streamlit.components.v1 as components
 import datetime
 import pandas as pd
+# Packages exploration
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 # Packages déchiffrage des avis 
 import matplotlib.pyplot as plt
 from wordcloud import WordCloud
@@ -170,7 +173,7 @@ if page == "📝 Description de la mission":
         st.markdown('<h1>Mission e-commerce Brésilien</h1>', unsafe_allow_html=True)
     with col2:
         st.markdown('<div class="logo-container">', unsafe_allow_html=True)
-        logo_path = "DatallySpies_Logo.png"  # Remplacez par le chemin de votre logo
+        logo_path = "images/DatallySpies_Logo.png"  # Remplacez par le chemin de votre logo
         logo = load_image(logo_path)
         if logo:
             st.image(logo, width=150)
@@ -221,13 +224,13 @@ if page == "📝 Description de la mission":
     col1, col2 = st.columns(2)
     with col1:
         st.markdown('<div class="image-item">', unsafe_allow_html=True)
-        left_image_path = "jerry_nicolas.png"
+        left_image_path = "images/jerry_nicolas.png"
         st.image(left_image_path, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
     
     with col2:
         st.markdown('<div class="image-item">', unsafe_allow_html=True)
-        right_image_path = "totallyspies_manon_lucile_manon.png"
+        right_image_path = "images/totallyspies_manon_lucile_manon.png"
         st.image(right_image_path, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
     
@@ -241,11 +244,268 @@ elif page == "🗺️ Exploration":
         st.markdown('<h1>🗺️ Exploration</h1>', unsafe_allow_html=True)
     with col2:
         st.markdown('<div class="logo-container">', unsafe_allow_html=True)
-        logo_path = "DatallySpies_Logo.png"  # Remplacez par le chemin de votre logo
+        logo_path = "images/DatallySpies_Logo.png"  # Remplacez par le chemin de votre logo
         logo = load_image(logo_path)
         if logo:
             st.image(logo, width=150)
         st.markdown('</div>', unsafe_allow_html=True)
+    ########### nombre de clients totaux à avoir commander sur le site
+    df_customers = pd.read_csv("cleaning_data/olist_customers_dataset.csv")
+    df_orders = pd.read_csv("cleaning_data/olist_orders_dataset.csv")
+    df_orders_items = pd.read_csv("cleaning_data/olist_order_items_dataset.csv")
+    df_products = pd.read_csv("cleaning_data/olist_products_dataset.csv")
+    df_name = pd.read_csv("cleaning_data/product_category_name_translation.csv")
+    df_avis = pd.read_csv("cleaning_data/olist_order_reviews_dataset.csv")
+
+    df_merged_orders = pd.merge(df_orders_items,
+                        df_orders,
+                        on='order_id',
+                        how='left')
+
+    df_final1 = pd.merge(df_merged_orders,
+                        df_products,
+                        on='product_id',
+                        how='left')
+    df_final1["product_category_name"] = df_final1["product_category_name"].fillna("other")
+
+    df_final2 = pd.merge(df_final1,
+                        df_name,
+                        on='product_category_name',
+                        how='left')
+    df_final2["product_category_name_english"] = df_final2["product_category_name_english"].fillna("other")
+
+    df_final3 = pd.merge(df_final2,
+                        df_customers,
+                        on='customer_id',
+                        how='left')
+
+    df_final3['order_purchase_timestamp'] = pd.to_datetime(df_final3['order_purchase_timestamp'])
+    df_final3['year'] = df_final3['order_purchase_timestamp'].dt.year
+    # calcul kpi
+    nb_commandes = df_final3["order_id"].nunique()
+    nb_clients_uniques = df_final3["customer_unique_id"].nunique()
+    nb_products = df_final3["product_id"].nunique()
+    ca = df_final3['price'].sum()
+    ca_formatted = f"{round(ca):,}".replace(",", " ")
+
+    m1, m2, m3, m4, m5, m6 = st.columns((0.5,1,1,1,1,0.5))
+    m1.write('')
+    m2.metric(label ='Nombre total de clients',value = nb_clients_uniques)
+    m3.metric(label ='Nombre total de commandes',value = nb_commandes)
+    m4.metric(label = 'Produits disponibles',value = nb_products)
+    m5.metric(label = 'Recettes totales R($)',value = str(ca_formatted)+" (R$)")
+    m1.write('')
+
+    # # Évolution des ventes mensuelles
+    ventes_annuelles = df_final3.groupby("year").agg({"price": "sum"}).reset_index()
+    command_annuel = df_final3.groupby("year", as_index=False)["order_id"].nunique()
+
+    fig1 = make_subplots(specs=[[{"secondary_y": True}]])
+
+    # Barres = nombre de commandes (axe Y principal)
+    fig1.add_trace(
+            go.Bar(
+                x=command_annuel["year"],
+                y=command_annuel["order_id"],
+                name="Nombre de commandes",
+                marker_color="#FFD700",            # jaune
+                opacity=0.8
+            ),
+            secondary_y=False,
+        )
+
+    # Courbe = chiffre d'affaires (axe Y secondaire)
+    fig1.add_trace(
+            go.Scatter(
+                x=ventes_annuelles["year"],
+                y=ventes_annuelles["price"],
+                name="Recette (R$)",
+                mode="lines+markers",
+                line=dict(color="#FF69B4", width=4),
+                marker=dict(size=10, color="#FF69B4")
+            ),
+            secondary_y=True,
+        )
+
+    # --- 3. Mise en forme cohérente avec ta charte -------------
+    fig1.update_layout(
+            title="Tendances du chiffre d'affaire  et nombre de commandes vendues par an",
+            plot_bgcolor="#FFFACD",
+            paper_bgcolor="#FFFACD",
+            font=dict(color="#4B0082", size=16),
+            title_font=dict(size=22, color="#4B0082"),
+            legend=dict(orientation="h", y=1.05, x=0.5, xanchor="center"),
+            xaxis=dict(
+                title="Année",
+                linecolor="#4B0082",
+                tickfont=dict(color="#4B0082"),
+                tickvals=[2016, 2017, 2018],
+                ticktext=["2016", "2017", "2018"],
+                showgrid=False
+            ),
+        )
+
+    # Axe Y principal (barres)
+    fig1.update_yaxes(
+            title_text="Nombre de commandes",
+            linecolor="#4B0082",
+            tickfont=dict(color="#4B0082"),
+            gridcolor="#A9A9A9",
+            secondary_y=False
+        )
+
+    # Axe Y secondaire (courbe CA)
+    fig1.update_yaxes(
+            title_text="Chiffres d'affaires (R$)",
+            linecolor="#4B0082",
+            tickfont=dict(color="#4B0082"),
+            showgrid=False,
+            secondary_y=True
+        )
+
+    # --- 4. Affichage ------------------------------------------
+    st.plotly_chart(fig1, use_container_width=True)
+
+    g1, g2 = st.columns((1,1))
+
+    with g1:
+        top_cat_revenue = (df_final3.groupby('product_category_name_english')['price'].sum().sort_values(ascending=False).head(10).reset_index())
+        fig2 = px.bar(
+                top_cat_revenue,
+                x='product_category_name_english',
+                y='price',
+                hover_data={'price': ':.2f'},
+                title="Top 10 des catégories en fonction du chiffre d'affaires",
+                labels={'price': "Chiffre d'affaire (R$)", 'product_category_name_english': 'Catégorie'},
+                color_discrete_sequence=["#FF69B4"])
+        fig2.update_traces(text=None)
+        fig2.update_layout(title="Top 10 des catégories en fonction du chiffre d'affaires",plot_bgcolor='#FFFACD',paper_bgcolor='#FFFACD',font=dict(color="#4B0082", size=16),
+            title_font=dict(size=22, color="#4B0082"),
+            legend=dict(orientation="h", y=1.05, x=0.5, xanchor="center"),yaxis=dict(tickformat=".2s",gridcolor='lightgray'),xaxis=dict(showgrid=False))
+        st.plotly_chart(fig2, use_container_width=True)
+    with g2:
+        top_cat_quantity = (df_final3.groupby('product_category_name_english')['order_id'].count().sort_values(ascending=False).head(10).reset_index())
+        fig3 = px.bar(
+                top_cat_quantity,
+                x='product_category_name_english',
+                y='order_id', 
+                hover_data={'order_id': ':.2f'},
+                title="Top 10 des catégories par quantité vendue",
+                labels={'order_id': 'Nombre de commandes par catégorie', 'product_category_name_english': 'Catégorie'},
+                color_discrete_sequence=["#FF69B4"])
+        fig3.update_traces(text=None)
+        fig3.update_layout(title="Top 10 des catégories par quantité vendue",plot_bgcolor='#FFFACD',paper_bgcolor='#FFFACD',font=dict(color="#4B0082", size=16),
+            title_font=dict(size=22, color="#4B0082"),
+            legend=dict(orientation="h", y=1.05, x=0.5, xanchor="center"),yaxis=dict(tickformat=".2s",gridcolor='lightgray'),xaxis=dict(showgrid=False))
+        st.plotly_chart(fig3, use_container_width=True)
+
+    st.markdown(
+    "<h3 style='color:#4B0082; font-size:22px; font-weight:bold;'>Nombre de clients distincts par région</h3>",
+    unsafe_allow_html=True)
+    g3, g4 = st.columns((1,2))
+    region_summary = df_final3.groupby('customer_state').agg(
+    n_commandes=('order_id', 'nunique'),
+    n_clients=('customer_unique_id', 'nunique')
+    ).reset_index()
+    with g3:
+        # Affichage du tableau trié par nombre de commandes décroissant
+        st.dataframe(region_summary.sort_values(by='n_commandes', ascending=False).style
+                    .format({'n_commandes': '{:,}', 'n_clients': '{:,}'}))
+    with g4:
+        fig = px.bar(region_summary.sort_values(by='n_clients'),
+                x='n_clients', y='customer_state',
+                orientation='h',
+                title=None,
+                color='n_clients',
+                color_continuous_scale=["#f7c6f7", "#d98bdb", "#a64ac9", "#6a0dad"])
+        fig.update_layout(plot_bgcolor='#FFFACD',paper_bgcolor='#FFFACD',font=dict(color="#4B0082", size=16))
+        fig.update_yaxes(tickmode='linear')
+        st.plotly_chart(fig, use_container_width=True)
+
+    df_avis['review_creation_date'] = pd.to_datetime(df_avis['review_creation_date'])
+    df_avis['review_year'] = df_avis['review_creation_date'].dt.year
+    score_moyen_par_année = (df_avis.groupby('review_year')['review_score'].mean().reset_index().sort_values(by='review_year', ascending=False))
+
+    score_moyen = df_avis['review_score'].mean()
+    score_top3_annees = score_moyen_par_année.head(3)
+    st.markdown(
+    "<h3 style='color:#4B0082; font-size:22px; font-weight:bold;'>Score moyen global vs Score moyen par année</h3>",
+    unsafe_allow_html=True)
+    c1,c2,c3,c9,c10 = st.columns([1, 1.5, 1.5, 1.5, 1])
+    with c3:
+        st.metric(label = 'Score Moyen',value = f"{round(score_moyen,2):.2f} ★")
+
+    c4,c5,c6,c7,c8 = st.columns([1, 1.5, 1.5, 1.5, 1])
+    for col, (_, row) in zip([c5,c6,c7], score_top3_annees.iterrows()):
+        annee = int(row["review_year"])
+        score = row["review_score"]
+        delta = score - score_moyen
+        col.metric(
+            label=f"{annee}",
+            value=f"{score:.2f} ★",
+            delta=f"{delta:+.2f}",
+            delta_color="normal"  # rouge si au-dessus, vert si en-dessous du global
+        )
+    counts_review = df_avis['review_score'].value_counts().reset_index()
+    counts_review.columns = ['review_score', 'count']
+    counts_review['percentage'] = counts_review['count'] / counts_review['count'].sum()
+    star_labels = {1: '1★', 2: '2★', 3: '3★', 4: '4★', 5: '5★'}
+    fig5 = px.bar(
+        counts_review,
+        x='review_score',
+        y='percentage',
+        hover_data={'percentage': ':.2f'},
+        labels={'percentage': "Pourcentage d'avis", 'review_score': "Note de la commande"},
+        title='Distribution des notes attribuées aux commandes',
+        color_discrete_sequence=["#FF69B4"])
+    fig5.update_traces(text=None)
+    fig5.update_layout(title='Distribution des notes attribuées aux commandes',plot_bgcolor='#FFFACD',paper_bgcolor='#FFFACD',font=dict(color="#4B0082", size=16),
+            title_font=dict(size=22, color="#4B0082"),yaxis=dict(tickformat=".1f",dtick=0.2,gridcolor='lightgray'),xaxis=dict(
+            tickvals=[1, 2, 3, 4, 5],  # valeurs existantes
+            ticktext=[star_labels[i] for i in [1, 2, 3, 4, 5]],showgrid=False))
+    st.plotly_chart(fig5, use_container_width=True)
+
+    df_final3["order_delivered_customer_date"] = pd.to_datetime(df_final3["order_delivered_customer_date"])
+    df_final3["order_estimated_delivery_date"] = pd.to_datetime(df_final3["order_estimated_delivery_date"])
+    df_orders_group = df_final3.groupby("order_id", as_index=False).agg({
+    "order_delivered_customer_date": "max",  # ou "first", selon cohérence
+    "order_estimated_delivery_date": "max"
+    })
+    df_orders_group["delivery_delay"] = (df_orders_group["order_delivered_customer_date"] - df_orders_group["order_estimated_delivery_date"]).dt.days
+    taux_retard = (df_orders_group["delivery_delay"] > 0).mean()
+    taux_avance = (df_orders_group["delivery_delay"] < 0).mean()
+    taux_normal = (df_orders_group["delivery_delay"] == 0).mean()
+    # delai_moyen = df_final3["delivery_delay"].mean()
+    # delai_median = df_final3["delivery_delay"].median()
+
+    st.markdown(
+    "<h3 style='color:#4B0082; font-size:22px; font-weight:bold;'>Performance logistiques des livraisons</h3>",
+    unsafe_allow_html=True)
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Livraison en retard", f"{taux_retard:.1%}")
+    col2.metric("Livraison en avance", f"{taux_avance:.1%}")
+    col3.metric("Livraison à l'heure", f"{taux_normal:.1%}")
+
+    bins = [-200, -30, -10, -1, 0, 1, 10, 30, 200]
+    labels = [
+        "Avance >30j",        # (-200, -30]
+        "Avance 10-30j",      # (-30, -10]
+        "Avance 1-10j",       # (-10, -1]
+        "Avance <1j",         # (-1, 0]
+        "Retard <1j",         # (0, 1]
+        "Retard 1-10j",       # (1, 10]
+        "Retard 10-30j",      # (10, 30]
+        "Retard >30j"         # (30, 200]
+    ]
+    df_orders_group["delay_group"] = pd.cut(df_orders_group["delivery_delay"], bins=bins, labels=labels)
+    fig = px.bar(df_orders_group["delay_group"].value_counts().sort_index(),
+             orientation='h',
+             title="Répartition des livraisons selon l'écart d'attentes",
+             labels={"value": "Nombre de livraisons", "delay_group": "Délais de livraison"},
+             color_discrete_sequence=["#AB63FA"])
+    fig.update_layout(title="Répartition des livraisons selon l'écart d'attentes",plot_bgcolor='#FFFACD',paper_bgcolor='#FFFACD',font=dict(color="#4B0082", size=16),
+            title_font=dict(size=22, color="#4B0082"))
+    st.plotly_chart(fig, use_container_width=True)
     
 elif page == "🔎 Déchiffrage des avis":
     col1, col2 = st.columns([12, 1])
@@ -254,7 +514,7 @@ elif page == "🔎 Déchiffrage des avis":
         st.markdown('<h1>🔎 Déchiffrage des avis</h1>', unsafe_allow_html=True)
     with col2:
         st.markdown('<div class="logo-container">', unsafe_allow_html=True)
-        logo_path = "DatallySpies_Logo.png"  # Remplacez par le chemin de votre logo
+        logo_path = "images/DatallySpies_Logo.png"  # Remplacez par le chemin de votre logo
         logo = load_image(logo_path)
         if logo:
             st.image(logo, width=150)
@@ -759,7 +1019,7 @@ elif page == "🕵️ Localisation des suspects":
         st.markdown('<h1>🕵️ Localisation des suspects</h1>', unsafe_allow_html=True)
     with col2:
         st.markdown('<div class="logo-container">', unsafe_allow_html=True)
-        logo_path = "DatallySpies_Logo.png"  # Remplacez par le chemin de votre logo
+        logo_path = "images/DatallySpies_Logo.png"  # Remplacez par le chemin de votre logo
         logo = load_image(logo_path)
         if logo:
             st.image(logo, width=150)
