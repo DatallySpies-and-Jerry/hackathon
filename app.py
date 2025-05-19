@@ -18,6 +18,64 @@ import plotly.express as px
 import folium
 import math
 from streamlit_folium import st_folium
+### Prétraitement des données
+orders = pd.read_csv("cleaning_data/olist_orders_dataset.csv")
+name = pd.read_csv("cleaning_data/product_category_name_translation.csv")
+order_reviews = pd.read_csv("cleaning_data/olist_order_reviews_dataset.csv")
+order_items = pd.read_csv('cleaning_data/olist_order_items_dataset.csv')
+products = pd.read_csv('cleaning_data/olist_products_dataset.csv')
+customers = pd.read_csv('cleaning_data/olist_customers_dataset.csv')
+sellers = pd.read_csv('cleaning_data/olist_sellers_dataset.csv')
+geoloc = pd.read_csv("cleaning_data/olist_geolocation_dataset.csv")
+df_merged_orders = pd.merge(order_items,
+                    orders,
+                    on='order_id',
+                    how='left')
+
+df_final1 = pd.merge(df_merged_orders,
+                    products,
+                    on='product_id',
+                    how='left')
+df_final1["product_category_name"] = df_final1["product_category_name"].fillna("other")
+
+df_final2 = pd.merge(df_final1,
+                    name,
+                    on='product_category_name',
+                    how='left')
+df_final2["product_category_name_english"] = df_final2["product_category_name_english"].fillna("other")
+
+df_final3 = pd.merge(df_final2,
+                    customers,
+                    on='customer_id',
+                    how='left')
+
+df_final3['order_purchase_timestamp'] = pd.to_datetime(df_final3['order_purchase_timestamp'])
+df_final3['year'] = df_final3['order_purchase_timestamp'].dt.year
+
+
+# Fusionner pour avoir toutes les informations nécessaires
+# Joindre les commandes avec les avis
+df = order_reviews.merge(orders, on='order_id', how='left')
+
+# Joindre avec les items pour avoir les produits
+df = df.merge(order_items, on='order_id', how='left')
+
+# Joindre avec les produits pour avoir les catégories
+df = df.merge(products, on='product_id', how='left')
+
+# Joindre avec les clients pour avoir les informations sur les clients
+df = df.merge(customers, on='customer_id', how='left')
+
+# Joindre avec les vendeurs pour avoir les informations sur les vendeurs
+df = df.merge(sellers, on='seller_id', how='left')
+
+# Joindre avec les traductions des catégories
+df = df.merge(name, on='product_category_name', how='left')
+
+
+# Fusion
+data = pd.merge(order_reviews, orders, on="order_id", how="inner")
+data = pd.merge(data, customers, on="customer_id", how="inner")
 
 # Configuration de la page
 st.set_page_config(
@@ -250,37 +308,6 @@ elif page == "🗺️ Exploration":
             st.image(logo, width=150)
         st.markdown('</div>', unsafe_allow_html=True)
     ########### nombre de clients totaux à avoir commander sur le site
-    df_customers = pd.read_csv("cleaning_data/olist_customers_dataset.csv")
-    df_orders = pd.read_csv("cleaning_data/olist_orders_dataset.csv")
-    df_orders_items = pd.read_csv("cleaning_data/olist_order_items_dataset.csv")
-    df_products = pd.read_csv("cleaning_data/olist_products_dataset.csv")
-    df_name = pd.read_csv("cleaning_data/product_category_name_translation.csv")
-    df_avis = pd.read_csv("cleaning_data/olist_order_reviews_dataset.csv")
-
-    df_merged_orders = pd.merge(df_orders_items,
-                        df_orders,
-                        on='order_id',
-                        how='left')
-
-    df_final1 = pd.merge(df_merged_orders,
-                        df_products,
-                        on='product_id',
-                        how='left')
-    df_final1["product_category_name"] = df_final1["product_category_name"].fillna("other")
-
-    df_final2 = pd.merge(df_final1,
-                        df_name,
-                        on='product_category_name',
-                        how='left')
-    df_final2["product_category_name_english"] = df_final2["product_category_name_english"].fillna("other")
-
-    df_final3 = pd.merge(df_final2,
-                        df_customers,
-                        on='customer_id',
-                        how='left')
-
-    df_final3['order_purchase_timestamp'] = pd.to_datetime(df_final3['order_purchase_timestamp'])
-    df_final3['year'] = df_final3['order_purchase_timestamp'].dt.year
     # calcul kpi
     nb_commandes = df_final3["order_id"].nunique()
     nb_clients_uniques = df_final3["customer_unique_id"].nunique()
@@ -422,11 +449,11 @@ elif page == "🗺️ Exploration":
         fig.update_yaxes(tickmode='linear')
         st.plotly_chart(fig, use_container_width=True)
 
-    df_avis['review_creation_date'] = pd.to_datetime(df_avis['review_creation_date'])
-    df_avis['review_year'] = df_avis['review_creation_date'].dt.year
-    score_moyen_par_année = (df_avis.groupby('review_year')['review_score'].mean().reset_index().sort_values(by='review_year', ascending=False))
+    order_reviews['review_creation_date'] = pd.to_datetime(order_reviews['review_creation_date'])
+    order_reviews['review_year'] = order_reviews['review_creation_date'].dt.year
+    score_moyen_par_année = (order_reviews.groupby('review_year')['review_score'].mean().reset_index().sort_values(by='review_year', ascending=False))
 
-    score_moyen = df_avis['review_score'].mean()
+    score_moyen = order_reviews['review_score'].mean()
     score_top3_annees = score_moyen_par_année.head(3)
     st.markdown(
     "<h3 style='color:#4B0082; font-size:22px; font-weight:bold;'>Score moyen global vs Score moyen par année</h3>",
@@ -446,7 +473,7 @@ elif page == "🗺️ Exploration":
             delta=f"{delta:+.2f}",
             delta_color="normal"  # rouge si au-dessus, vert si en-dessous du global
         )
-    counts_review = df_avis['review_score'].value_counts().reset_index()
+    counts_review = order_reviews['review_score'].value_counts().reset_index()
     counts_review.columns = ['review_score', 'count']
     counts_review['percentage'] = counts_review['count'] / counts_review['count'].sum()
     star_labels = {1: '1★', 2: '2★', 3: '3★', 4: '4★', 5: '5★'}
@@ -531,39 +558,6 @@ elif page == "🔎 Déchiffrage des avis":
         nltk.download('punkt')
 
     download_nltk_resources()
-
-    # Fonction pour charger les données
-    @st.cache_data
-    def load_data():
-        # Charger les différents fichiers CSV
-        orders = pd.read_csv('cleaning_data/olist_orders_dataset.csv')
-        order_reviews = pd.read_csv('cleaning_data/olist_order_reviews_dataset.csv')
-        order_items = pd.read_csv('cleaning_data/olist_order_items_dataset.csv')
-        products = pd.read_csv('cleaning_data/olist_products_dataset.csv')
-        customers = pd.read_csv('cleaning_data/olist_customers_dataset.csv')
-        sellers = pd.read_csv('cleaning_data/olist_sellers_dataset.csv')
-        product_category_translation = pd.read_csv('cleaning_data/product_category_name_translation.csv')
-        
-        # Fusionner pour avoir toutes les informations nécessaires
-        # Joindre les commandes avec les avis
-        df = order_reviews.merge(orders, on='order_id', how='left')
-        
-        # Joindre avec les items pour avoir les produits
-        df = df.merge(order_items, on='order_id', how='left')
-        
-        # Joindre avec les produits pour avoir les catégories
-        df = df.merge(products, on='product_id', how='left')
-        
-        # Joindre avec les clients pour avoir les informations sur les clients
-        df = df.merge(customers, on='customer_id', how='left')
-        
-        # Joindre avec les vendeurs pour avoir les informations sur les vendeurs
-        df = df.merge(sellers, on='seller_id', how='left')
-        
-        # Joindre avec les traductions des catégories
-        df = df.merge(product_category_translation, on='product_category_name', how='left')
-        
-        return df
 
     # Fonction pour nettoyer le texte
     @st.cache_data
@@ -688,9 +682,6 @@ elif page == "🔎 Déchiffrage des avis":
 
     # Simuler le chargement des données
     with st.spinner("Chargement des données en cours..."):
-        # Charger les données
-        df = load_data()
-        
         # Préparation des données
         df['sentiment'] = df['review_score'].apply(categorize_review_score)
         df['clean_comment'] = df['review_comment_message'].fillna('').apply(clean_text)
@@ -1024,20 +1015,6 @@ elif page == "🕵️ Localisation des suspects":
         if logo:
             st.image(logo, width=150)
         st.markdown('</div>', unsafe_allow_html=True)
-
-    @st.cache_data
-    def load_data():
-        reviews = pd.read_csv("cleaning_data/olist_order_reviews_dataset.csv")
-        orders = pd.read_csv("cleaning_data/olist_orders_dataset.csv")
-        customers = pd.read_csv("cleaning_data/olist_customers_dataset.csv")
-        geoloc = pd.read_csv("cleaning_data/olist_geolocation_dataset.csv")
-        return reviews, orders, customers, geoloc
-
-    reviews, orders, customers, geoloc = load_data()
-
-    # Fusion
-    data = pd.merge(reviews, orders, on="order_id", how="inner")
-    data = pd.merge(data, customers, on="customer_id", how="inner")
 
     # Notes par État
     note_par_region = (
