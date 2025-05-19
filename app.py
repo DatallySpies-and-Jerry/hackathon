@@ -3,7 +3,18 @@ from PIL import Image
 import streamlit.components.v1 as components
 import datetime
 import pandas as pd
-import numpy as np
+# Packages déchiffrage des avis 
+import matplotlib.pyplot as plt
+from wordcloud import WordCloud
+import nltk
+from nltk.corpus import stopwords
+import re
+from collections import Counter
+import plotly.express as px
+# Packages localisation des suspects
+import folium
+import math
+from streamlit_folium import st_folium
 
 # Configuration de la page
 st.set_page_config(
@@ -37,6 +48,12 @@ st.markdown("""
         text-stroke: 2px #4B0082; /* pour compatibilité */
     }
     
+    @import url('https://fonts.googleapis.com/css2?family=Chewy&display=swap');
+
+    /* Appliquer partout */
+    div[class^="stMarkdown"] * {
+        font-family: 'Caveat', cursive;
+    }
     .stButton button {
         background-color: #FF69B4; /* Rose */
         color: white;
@@ -47,10 +64,6 @@ st.markdown("""
     .stButton button:hover {
         background-color: #FF1493; /* Rose foncé */
         color: white;
-    }
-    
-    .stTextInput input, .stSelectbox, .stMultiselect {
-        border: 2px solid #FFD700; /* Jaune */
     }
     
     .logo-container {
@@ -146,10 +159,10 @@ st.markdown("""
 
 # Sidebar pour la navigation
 st.sidebar.title("Navigation")
-page = st.sidebar.radio("Aller à", ["Présentation", "Chiffres clés", "Réponse à notre problématique"])
+page = st.sidebar.radio("Direction :", ["📝 Description de la mission", "🗺️ Exploration", "🔎 Déchiffrage des avis", "🕵️ Localisation des suspects"])
 
 # Page de présentation
-if page == "Présentation":
+if page == "📝 Description de la mission":
     # Logo en haut à gauche
     col1, col2 = st.columns([12, 1])
     with col1:
@@ -208,24 +221,24 @@ if page == "Présentation":
     col1, col2 = st.columns(2)
     with col1:
         st.markdown('<div class="image-item">', unsafe_allow_html=True)
-        left_image_path = "image (2).png"
+        left_image_path = "jerry_nicolas.png"
         st.image(left_image_path, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
     
     with col2:
         st.markdown('<div class="image-item">', unsafe_allow_html=True)
-        right_image_path = "image (1).png"
+        right_image_path = "totallyspies_manon_lucile_manon.png"
         st.image(right_image_path, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
     
     st.markdown('</div>', unsafe_allow_html=True)
 
 # Autres onglets
-elif page == "Chiffres clés":
+elif page == "🗺️ Exploration":
     col1, col2 = st.columns([12, 1])
     with col1:
         st.markdown('<div class="logo-container">', unsafe_allow_html=True)
-        st.markdown('<h1>Chiffres clés</h1>', unsafe_allow_html=True)
+        st.markdown('<h1>🗺️ Exploration</h1>', unsafe_allow_html=True)
     with col2:
         st.markdown('<div class="logo-container">', unsafe_allow_html=True)
         logo_path = "DatallySpies_Logo.png"  # Remplacez par le chemin de votre logo
@@ -234,11 +247,11 @@ elif page == "Chiffres clés":
             st.image(logo, width=150)
         st.markdown('</div>', unsafe_allow_html=True)
     
-elif page == "Réponse à notre problématique":
+elif page == "🔎 Déchiffrage des avis":
     col1, col2 = st.columns([12, 1])
     with col1:
         st.markdown('<div class="logo-container">', unsafe_allow_html=True)
-        st.markdown('<h1>Réponse à notre problématique</h1>', unsafe_allow_html=True)
+        st.markdown('<h1>🔎 Déchiffrage des avis</h1>', unsafe_allow_html=True)
     with col2:
         st.markdown('<div class="logo-container">', unsafe_allow_html=True)
         logo_path = "DatallySpies_Logo.png"  # Remplacez par le chemin de votre logo
@@ -246,15 +259,787 @@ elif page == "Réponse à notre problématique":
         if logo:
             st.image(logo, width=150)
         st.markdown('</div>', unsafe_allow_html=True)
-    # Ajoutez ici le contenu de la page "Réponse à notre problématique"
-    # Import des données :
-    payments = pd.read_csv("cleaning_data/olist_order_payments_dataset.csv")
-    reviews = pd.read_csv("cleaning_data/olist_order_reviews_dataset.csv")
-    orders = pd.read_csv("cleaning_data/olist_orders_dataset.csv")
-    items = pd.read_csv("cleaning_data/olist_order_items_dataset.csv")
-    geolocations = pd.read_csv("cleaning_data/olist_geolocation_dataset.csv")
-    customers = pd.read_csv("cleaning_data/olist_customers_dataset.csv")
-    products = pd.read_csv("cleaning_data/olist_products_dataset.csv")
-    sellers = pd.read_csv("cleaning_data/olist_sellers_dataset.csv")
-    products_categories = pd.read_csv("cleaning_data/olist_product_category_name_translation.csv")
-    # Nuage de mots
+
+
+    # Palette de couleurs personnalisée violet, rose et jaune
+    custom_color_scale = ["#6A0DAD", "#8A2BE2", "#9370DB", "#BA55D3", "#DA70D6", "#EE82EE", "#FF69B4", "#FFB6C1", "#FFD700", "#FFFF00"]
+
+    # Télécharger les ressources NLTK nécessaires
+    @st.cache_resource
+    def download_nltk_resources():
+        nltk.download('stopwords')
+        nltk.download('punkt')
+
+    download_nltk_resources()
+
+    # Fonction pour charger les données
+    @st.cache_data
+    def load_data():
+        # Charger les différents fichiers CSV
+        orders = pd.read_csv('cleaning_data/olist_orders_dataset.csv')
+        order_reviews = pd.read_csv('cleaning_data/olist_order_reviews_dataset.csv')
+        order_items = pd.read_csv('cleaning_data/olist_order_items_dataset.csv')
+        products = pd.read_csv('cleaning_data/olist_products_dataset.csv')
+        customers = pd.read_csv('cleaning_data/olist_customers_dataset.csv')
+        sellers = pd.read_csv('cleaning_data/olist_sellers_dataset.csv')
+        product_category_translation = pd.read_csv('cleaning_data/product_category_name_translation.csv')
+        
+        # Fusionner pour avoir toutes les informations nécessaires
+        # Joindre les commandes avec les avis
+        df = order_reviews.merge(orders, on='order_id', how='left')
+        
+        # Joindre avec les items pour avoir les produits
+        df = df.merge(order_items, on='order_id', how='left')
+        
+        # Joindre avec les produits pour avoir les catégories
+        df = df.merge(products, on='product_id', how='left')
+        
+        # Joindre avec les clients pour avoir les informations sur les clients
+        df = df.merge(customers, on='customer_id', how='left')
+        
+        # Joindre avec les vendeurs pour avoir les informations sur les vendeurs
+        df = df.merge(sellers, on='seller_id', how='left')
+        
+        # Joindre avec les traductions des catégories
+        df = df.merge(product_category_translation, on='product_category_name', how='left')
+        
+        return df
+
+    # Fonction pour nettoyer le texte
+    @st.cache_data
+    def clean_text(text):
+        if isinstance(text, str):
+            # Convertir en minuscules
+            text = text.lower()
+            # Supprimer les caractères spéciaux et les chiffres
+            text = re.sub(r'[^\w\s]', '', text)
+            text = re.sub(r'\d+', '', text)
+            # Supprimer les espaces supplémentaires
+            text = re.sub(r'\s+', ' ', text).strip()
+            return text
+        return ""
+
+    # Fonction pour obtenir les mots-clés les plus fréquents
+    @st.cache_data
+    def get_top_words(texts, n=50, min_length=3):
+        # Combine all texts
+        all_text = ' '.join(texts)
+        
+        # Tokenize
+        words = nltk.word_tokenize(all_text)
+        
+        # Remove stopwords and short words
+        stop_words = set(stopwords.words('portuguese'))
+        words = [word for word in words if word.lower() not in stop_words and len(word) >= min_length]
+        
+        # Count word frequencies
+        word_freq = Counter(words)
+        
+        # Return top n words
+        return dict(word_freq.most_common(n))
+
+    # Fonction pour créer un nuage de mots
+    def create_wordcloud(text_data, title="", colormap='magma', background_color='white'):
+        if not text_data:
+            return None
+        
+        combined_text = ' '.join(text_data)
+        if not combined_text.strip():
+            return None
+        
+        wordcloud = WordCloud(
+            width=800, 
+            height=400, 
+            background_color=background_color,
+            colormap=colormap,
+            max_words=100,
+            stopwords=set(stopwords.words('portuguese')),
+            collocations=True,
+            normalize_plurals=False,
+            contour_width=3,
+            contour_color='#6A0DAD',  # Contour violet
+            random_state=42
+        ).generate(combined_text)
+        
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.imshow(wordcloud, interpolation='bilinear')
+        ax.set_title(title, fontsize=20)
+        ax.axis('off')
+        
+        return fig
+
+    # Fonction pour créer un nuage de mots de n-grammes
+    @st.cache_data
+    def create_ngram_wordcloud(text_data, n=2, title="", colormap='magma', background_color='white'):
+        if not text_data:
+            return None
+        
+        # Tokenize
+        tokenized_texts = [nltk.word_tokenize(text) for text in text_data if isinstance(text, str) and text.strip()]
+        
+        # Flatten the list of tokens
+        all_tokens = []
+        for tokens in tokenized_texts:
+            all_tokens.extend(tokens)
+        
+        # Create n-grams
+        ngrams = list(nltk.ngrams(all_tokens, n))
+        ngram_phrases = [' '.join(gram) for gram in ngrams]
+        
+        # Count n-gram frequencies
+        ngram_freq = Counter(ngram_phrases)
+        
+        # Create a text for WordCloud
+        ngram_text = ' '.join([f"{ngram} " * freq for ngram, freq in ngram_freq.items()])
+        
+        if not ngram_text.strip():
+            return None
+        
+        # Create WordCloud
+        wordcloud = WordCloud(
+            width=800, 
+            height=400, 
+            background_color=background_color,
+            colormap=colormap,
+            max_words=100,
+            stopwords=set(),  # We already filtered stopwords when creating n-grams
+            collocations=False,  # Already creating our own collocations
+            normalize_plurals=False,
+            contour_width=3,
+            contour_color='#6A0DAD',  # Contour violet
+            random_state=42
+        ).generate(ngram_text)
+        
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.imshow(wordcloud, interpolation='bilinear')
+        ax.set_title(title, fontsize=20)
+        ax.axis('off')
+        
+        return fig
+
+    # Fonction pour catégoriser les scores d'avis
+    def categorize_review_score(score):
+        if score <= 2:
+            return "Négatif"
+        elif score == 3:
+            return "Neutre"
+        else:
+            return "Positif"
+
+    # Simuler le chargement des données
+    with st.spinner("Chargement des données en cours..."):
+        # Charger les données
+        df = load_data()
+        
+        # Préparation des données
+        df['sentiment'] = df['review_score'].apply(categorize_review_score)
+        df['clean_comment'] = df['review_comment_message'].fillna('').apply(clean_text)
+        
+        # Extraire l'année et le mois pour le filtrage
+        if 'review_creation_date' in df.columns:
+            df['review_date'] = pd.to_datetime(df['review_creation_date'])
+            df['review_year'] = df['review_date'].dt.year
+            df['review_month'] = df['review_date'].dt.month
+        else:
+            # Colonnes factices si la date n'est pas disponible
+            df['review_year'] = 2021
+            df['review_month'] = 1
+
+    # Section des filtres
+    st.sidebar.header("📋 Filtres d'analyse")
+
+    # Filtres pour le profil utilisateur
+    st.sidebar.subheader("Filtres démographiques")
+
+    # Filtres pour les États (limiter à 10 pour éviter la surcharge)
+    if 'customer_state' in df.columns:
+        available_states = sorted(df['customer_state'].unique())
+        selected_states = st.sidebar.multiselect(
+            "États",
+            options=available_states,
+            default=available_states[:5] if len(available_states) > 5 else available_states
+        )
+        if selected_states:
+            df_filtered = df[df['customer_state'].isin(selected_states)]
+        else:
+            df_filtered = df
+    else:
+        df_filtered = df
+
+    # Filtres pour les catégories de produits
+    if 'product_category_name_english' in df.columns:
+        product_categories = sorted(df_filtered['product_category_name_english'].dropna().unique())
+        selected_categories = st.sidebar.multiselect(
+            "Catégories de produits",
+            options=product_categories,
+            default=[]
+        )
+        if selected_categories:
+            df_filtered = df_filtered[df_filtered['product_category_name_english'].isin(selected_categories)]
+
+    # Filtres de temps
+    st.sidebar.subheader("Filtres temporels")
+
+    # Années
+    if 'review_year' in df.columns:
+        years = sorted(df_filtered['review_year'].unique())
+        selected_years = st.sidebar.multiselect(
+            "Années",
+            options=years,
+            default=years
+        )
+        if selected_years:
+            df_filtered = df_filtered[df_filtered['review_year'].isin(selected_years)]
+
+    # Mois
+    if 'review_month' in df.columns:
+        months = sorted(df_filtered['review_month'].unique())
+        month_names = {
+            1: "Janvier", 2: "Février", 3: "Mars", 4: "Avril", 5: "Mai", 6: "Juin",
+            7: "Juillet", 8: "Août", 9: "Septembre", 10: "Octobre", 11: "Novembre", 12: "Décembre"
+        }
+        month_options = [(m, month_names[m]) for m in months]
+        selected_months = st.sidebar.multiselect(
+            "Mois",
+            options=months,
+            format_func=lambda x: month_names[x],
+            default=months
+        )
+        if selected_months:
+            df_filtered = df_filtered[df_filtered['review_month'].isin(selected_months)]
+
+    # Filtres de sentiment
+    st.sidebar.subheader("Filtres de sentiment")
+    sentiments = sorted(df_filtered['sentiment'].unique())
+    selected_sentiments = st.sidebar.multiselect(
+        "Sentiments",
+        options=sentiments,
+        default=sentiments
+    )
+    if selected_sentiments:
+        df_filtered = df_filtered[df_filtered['sentiment'].isin(selected_sentiments)]
+
+    # Paramètres des nuages de mots
+    st.sidebar.subheader("Paramètres des nuages de mots")
+    wordcloud_type = st.sidebar.selectbox(
+        "Type de nuage de mots",
+        options=["Mots simples", "Bigrammes (groupes de 2 mots)", "Trigrammes (groupes de 3 mots)"],
+        index=0
+    )
+
+    min_word_length = st.sidebar.slider(
+        "Longueur minimale des mots",
+        min_value=2,
+        max_value=10,
+        value=3
+    )
+
+    # Traduction des commentaires si nécessaire
+    comments_to_use = df_filtered['clean_comment'].fillna('')
+
+    # Analyse des données filtrées
+    st.header("🔍 Analyse des commentaires")
+
+    # Créer les onglets pour les différentes visualisations
+    tab1, tab2, tab3 = st.tabs(["📊 Distribution des sentiments", "☁️ Nuages de mots", "📈 Analyse comparative"])
+
+    with tab1:
+        st.subheader("Distribution des sentiments par catégorie")
+        
+        # Distribution des sentiments
+        sentiment_counts = df_filtered['sentiment'].value_counts().reset_index()
+        sentiment_counts.columns = ['Sentiment', 'Nombre']
+        
+        # Mapping des couleurs pour les sentiments
+        sentiment_colors = {
+            "Positif": "#6A0DAD",  # Violet
+            "Neutre": "#FF69B4",   # Rose
+            "Négatif": "#FFD700"   # Jaune doré
+        }
+        
+        fig = px.pie(sentiment_counts, values='Nombre', names='Sentiment', 
+                    title='Distribution des sentiments dans les commentaires',
+                    color='Sentiment',
+                    color_discrete_map=sentiment_colors,
+                    hole=0.4)
+        fig.update_traces(textinfo='percent+label')
+        fig.update_layout(title_text='Répartition des sentiments')
+        fig.update_traces(hovertemplate='Sentiment: %{label}<br>Nb commentaires: %{value}<extra></extra>')
+        fig.update_layout(showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Distribution des scores
+        score_counts = df_filtered['review_score'].value_counts().sort_index().reset_index()
+        score_counts.columns = ['Score', 'Nombre']
+        
+        fig = px.bar(score_counts, x='Score', y='Nombre', 
+                    title='Distribution des scores des avis',
+                    color='Score', color_continuous_scale=custom_color_scale)
+        fig.update_layout(xaxis_title='Score', yaxis_title='Nombre de commentaires')
+        fig.update_traces(texttemplate='%{y}', textposition='outside')
+        fig.update_traces(marker=dict(line=dict(width=1, color='DarkSlateGrey')))
+        fig.update_traces(textfont_size=12)
+        fig.update_traces(hovertemplate='Score: %{x}<br>Nb commentaires: %{y}<extra></extra>')
+        fig.update_layout(xaxis={'categoryorder':'total descending'})
+        st.plotly_chart(fig, use_container_width=True)
+
+    with tab2:
+        st.subheader("Nuages de mots par sentiment")
+        
+        # Filtrer les commentaires par sentiment
+        positive_comments = comments_to_use[df_filtered['sentiment'] == 'Positif'].tolist()
+        neutral_comments = comments_to_use[df_filtered['sentiment'] == 'Neutre'].tolist()
+        negative_comments = comments_to_use[df_filtered['sentiment'] == 'Négatif'].tolist()
+        
+        # Créer les colonnes pour afficher les nuages de mots
+        col1, col2 = st.columns(2)
+        
+        # Mappings des colormap par sentiment
+        positive_colormap = "magma"         # Violets et roses
+        negative_colormap = "plasma"        # Violets et jaunes
+        neutral_colormap = "RdPu"           # Rouge à violet
+        
+        with col1:
+            st.subheader("💚 Commentaires positifs")
+            if positive_comments:
+                if wordcloud_type == "Mots simples":
+                    fig_positive = create_wordcloud(positive_comments, 
+                                                title="Mots les plus fréquents - Avis positifs",
+                                                colormap=positive_colormap)
+                elif wordcloud_type == "Bigrammes (groupes de 2 mots)":
+                    fig_positive = create_ngram_wordcloud(positive_comments, n=2,
+                                                        title="Bigrammes les plus fréquents - Avis positifs",
+                                                        colormap=positive_colormap)
+                else:  # Trigrammes
+                    fig_positive = create_ngram_wordcloud(positive_comments, n=3,
+                                                        title="Trigrammes les plus fréquents - Avis positifs",
+                                                        colormap=positive_colormap)
+                
+                if fig_positive:
+                    st.pyplot(fig_positive)
+                else:
+                    st.info("Pas assez de données pour générer un nuage de mots.")
+            else:
+                st.info("Aucun commentaire positif trouvé avec les filtres actuels.")
+        
+        with col2:
+            st.subheader("❤️ Commentaires négatifs")
+            if negative_comments:
+                if wordcloud_type == "Mots simples":
+                    fig_negative = create_wordcloud(negative_comments, 
+                                                title="Mots les plus fréquents - Avis négatifs",
+                                                colormap=negative_colormap)
+                elif wordcloud_type == "Bigrammes (groupes de 2 mots)":
+                    fig_negative = create_ngram_wordcloud(negative_comments, n=2,
+                                                        title="Bigrammes les plus fréquents - Avis négatifs",
+                                                        colormap=negative_colormap)
+                else:  # Trigrammes
+                    fig_negative = create_ngram_wordcloud(negative_comments, n=3,
+                                                        title="Trigrammes les plus fréquents - Avis négatifs",
+                                                        colormap=negative_colormap)
+                
+                if fig_negative:
+                    st.pyplot(fig_negative)
+                else:
+                    st.info("Pas assez de données pour générer un nuage de mots.")
+            else:
+                st.info("Aucun commentaire négatif trouvé avec les filtres actuels.")
+        
+        # Afficher les commentaires neutres si disponibles
+        if neutral_comments:
+            st.subheader("🔵 Commentaires neutres")
+            if wordcloud_type == "Mots simples":
+                fig_neutral = create_wordcloud(neutral_comments, 
+                                            title="Mots les plus fréquents - Avis neutres",
+                                            colormap=neutral_colormap)
+            elif wordcloud_type == "Bigrammes (groupes de 2 mots)":
+                fig_neutral = create_ngram_wordcloud(neutral_comments, n=2,
+                                                    title="Bigrammes les plus fréquents - Avis neutres",
+                                                    colormap=neutral_colormap)
+            else:  # Trigrammes
+                fig_neutral = create_ngram_wordcloud(neutral_comments, n=3,
+                                                    title="Trigrammes les plus fréquents - Avis neutres",
+                                                    colormap=neutral_colormap)
+            if fig_neutral:
+                st.pyplot(fig_neutral)
+            else:
+                st.info("Pas assez de données pour générer un nuage de mots neutres.")
+
+    with tab3:
+        st.subheader("Analyse comparative des profils clients")
+        
+        # Créer une analyse par régions/états
+        if 'customer_state' in df_filtered.columns:
+            st.write("### Sentiment par État/Région")
+            sentiment_by_state = df_filtered.groupby(['customer_state', 'sentiment']).size().reset_index(name='count')
+            
+            fig = px.bar(sentiment_by_state, x='customer_state', y='count', color='sentiment', 
+                        barmode='group', title='Distribution des sentiments par État/Région',
+                        color_discrete_sequence=custom_color_scale)
+            fig.update_layout(xaxis_title='État/Région', yaxis_title='Nombre de commentaires')
+            fig.update_traces(marker=dict(line=dict(width=1, color='DarkSlateGrey')))
+            fig.update_traces(textfont_size=12)
+            fig.update_layout(xaxis={'categoryorder':'total descending'})
+            fig.update_traces(hovertemplate='État: %{x}<br>Nb commentaires: %{y}<extra></extra>')
+            st.plotly_chart(fig, use_container_width=True)
+        
+        # Créer une analyse par catégories de produits
+        if 'product_category_name_english' in df_filtered.columns:
+            st.write("### Sentiment par Catégorie de Produit")
+            # Prendre les 10 catégories les plus fréquentes
+            top_categories = df_filtered['product_category_name_english'].value_counts().index.tolist()
+            df_top_categories = df_filtered[df_filtered['product_category_name_english'].isin(top_categories)]
+            
+            sentiment_by_category = df_top_categories.groupby(['product_category_name_english', 'sentiment']).size().reset_index(name='count')
+            
+            fig = px.bar(sentiment_by_category, x='product_category_name_english', y='count', color='sentiment', 
+                        barmode='group', title='Distribution des sentiments par catégorie de produit',
+                        color_discrete_sequence=custom_color_scale)
+            fig.update_layout(xaxis_title='Catégorie de produit', yaxis_title='Nombre de commentaires')
+            fig.update_traces(marker=dict(line=dict(width=1, color='DarkSlateGrey')))
+            fig.update_traces(textfont_size=12)
+            fig.update_traces(hovertemplate='Catégorie: %{x}<br>Nb commentaires: %{y}<extra></extra>')
+            fig.update_layout(xaxis={'categoryorder':'total descending'})
+            st.plotly_chart(fig, use_container_width=True)
+        
+        # Score moyen par catégorie
+        if 'product_category_name_english' in df_filtered.columns:
+            avg_score_by_category = df_filtered.groupby('product_category_name_english')['review_score'].mean().reset_index()
+            avg_score_by_category.columns = ['Catégorie', 'Score moyen']
+            avg_score_by_category = avg_score_by_category.sort_values('Score moyen', ascending=False)
+            
+            fig = px.bar(avg_score_by_category, x='Catégorie', y='Score moyen', 
+                        title='Score moyen par catégorie de produit',
+                        color='Score moyen', color_continuous_scale=custom_color_scale)
+            fig.update_layout(xaxis_title='Catégorie de produit', yaxis_title='Score moyen')
+            fig.update_traces(marker=dict(line=dict(width=1, color='DarkSlateGrey')))
+            fig.update_traces(textfont_size=12)
+            fig.update_traces(hovertemplate='Catégorie: %{x}<br>Score moyen: %{y}<extra></extra>')
+            fig.update_layout(xaxis={'categoryorder':'total descending'})
+            st.plotly_chart(fig, use_container_width=True)
+
+
+    # Section pour afficher quelques exemples de commentaires
+    st.header("📝 Exemples de commentaires")
+
+    # Sélectionner le sentiment pour voir les exemples
+    sentiment_selection = st.selectbox(
+        "Sélectionnez le type de commentaires à afficher",
+        options=["Positifs", "Neutres", "Négatifs"],
+        index=0
+    )
+
+    mapping = {"Positifs": "Positif", "Neutres": "Neutre", "Négatifs": "Négatif"}
+    filtered_sentiment = df_filtered[df_filtered['sentiment'] == mapping[sentiment_selection]]
+
+    # Sélectionner les colonnes pertinentes pour l'affichage
+    if 'translated_comment' in filtered_sentiment.columns:
+        comments_to_display = filtered_sentiment[['review_score', 'clean_comment', 'translated_comment']].copy()
+        comments_to_display.columns = ['Score', 'Commentaire original', 'Commentaire traduit']
+    else:
+        comments_to_display = filtered_sentiment[['review_score', 'clean_comment']].copy()
+        comments_to_display.columns = ['Score', 'Commentaire']
+
+    # Afficher les premiers commentaires non vides
+    non_empty_comments = comments_to_display[comments_to_display.iloc[:, -1].str.len() > 0].head(5)
+    if not non_empty_comments.empty:
+        st.dataframe(non_empty_comments, use_container_width=True)
+    else:
+        st.info(f"Aucun commentaire {sentiment_selection.lower()} trouvé avec les filtres actuels.")
+
+    # Footer avec des informations sur l'application
+    st.markdown("---")
+    st.markdown("""
+    Développé avec Streamlit et Python, par Lucile Saillant, Manon Léonardi et Manon Cousin.
+    """) 
+elif page == "🕵️ Localisation des suspects":
+    col1, col2 = st.columns([12, 1])
+    with col1:
+        st.markdown('<div class="logo-container">', unsafe_allow_html=True)
+        st.markdown('<h1>🕵️ Localisation des suspects</h1>', unsafe_allow_html=True)
+    with col2:
+        st.markdown('<div class="logo-container">', unsafe_allow_html=True)
+        logo_path = "DatallySpies_Logo.png"  # Remplacez par le chemin de votre logo
+        logo = load_image(logo_path)
+        if logo:
+            st.image(logo, width=150)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    @st.cache_data
+    def load_data():
+        reviews = pd.read_csv("cleaning_data/olist_order_reviews_dataset.csv")
+        orders = pd.read_csv("cleaning_data/olist_orders_dataset.csv")
+        customers = pd.read_csv("cleaning_data/olist_customers_dataset.csv")
+        geoloc = pd.read_csv("cleaning_data/olist_geolocation_dataset.csv")
+        return reviews, orders, customers, geoloc
+
+    reviews, orders, customers, geoloc = load_data()
+
+    # Fusion
+    data = pd.merge(reviews, orders, on="order_id", how="inner")
+    data = pd.merge(data, customers, on="customer_id", how="inner")
+
+    # Notes par État
+    note_par_region = (
+        data.groupby("customer_state")
+        .agg(avis_moyen=("review_score", "mean"), nb_avis=("review_score", "count"))
+        .reset_index()
+    )
+
+    coord_etats = {
+        "AC": (-9.97499, -67.8243), "AL": (-9.5713, -36.782), "AM": (-3.119, -60.0217),
+        "AP": (0.0349, -51.0694), "BA": (-12.9714, -38.5014), "CE": (-3.7172, -38.5433),
+        "DF": (-15.8267, -47.9218), "ES": (-20.3155, -40.3128), "GO": (-16.6864, -49.2643),
+        "MA": (-2.5307, -44.3068), "MG": (-19.9167, -43.9345), "MS": (-20.4486, -54.6295),
+        "MT": (-12.6819, -56.9211), "PA": (-1.455, -48.503), "PB": (-7.1151, -34.8641),
+        "PE": (-8.0476, -34.877), "PI": (-5.0892, -42.8016), "PR": (-25.4284, -49.2733),
+        "RJ": (-22.9068, -43.1729), "RN": (-5.7945, -35.211), "RO": (-11.5057, -63.5806),
+        "RR": (2.8238, -60.6753), "RS": (-30.0346, -51.2177), "SC": (-27.5954, -48.548),
+        "SE": (-10.9472, -37.0731), "SP": (-23.5505, -46.6333), "TO": (-10.2501, -48.3243)
+    }
+
+    note_par_region["lat"] = note_par_region["customer_state"].map(lambda x: coord_etats.get(x, (None, None))[0])
+    note_par_region["lng"] = note_par_region["customer_state"].map(lambda x: coord_etats.get(x, (None, None))[1])
+
+    def couleur(score):
+        if score < 2:
+            return "darkred"
+        elif score < 3:
+            return "red"
+        elif score < 4:
+            return "orange"
+        else:
+            return "green"
+        
+    def get_closest_state(click_lat, click_lng, coord_dict):
+        closest = None
+        min_dist = float("inf")
+        for state, (lat, lng) in coord_dict.items():
+            dist = math.sqrt((click_lat - lat)**2 + (click_lng - lng)**2)
+            if dist < min_dist:
+                min_dist = dist
+                closest = state
+        return closest
+
+    def get_closest_city(click_lat, click_lng, df_coords):
+                    closest = None
+                    min_dist = float("inf")
+                    for _, row in df_coords.iterrows():
+                        dist = math.sqrt((click_lat - row["geolocation_lat"])**2 + (click_lng - row["geolocation_lng"])**2)
+                        if dist < min_dist:
+                            min_dist = dist
+                            closest = row["customer_city"]
+                    return closest
+
+
+    # Carte principale (États)
+    carte_etat = folium.Map(location=[-14.2350, -51.9253], zoom_start=4, tiles="CartoDB positron")
+
+    for _, row in note_par_region.iterrows():
+        if pd.notna(row["lat"]) and pd.notna(row["lng"]):
+            folium.CircleMarker(
+                location=[row["lat"], row["lng"]],
+                radius=7 + row["nb_avis"] / 3000,
+                color=couleur(row["avis_moyen"]),
+                fill=True,
+                fill_opacity=0.8,
+                popup=row["customer_state"],
+                tooltip=f"{row['customer_state']} - {row['avis_moyen']:.2f} ⭐"
+            ).add_to(carte_etat)
+
+    # Affichage côte à côte
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("## 🗺️ Carte des avis par régions")
+        st.markdown("### 🇧🇷 Brésil")
+
+        col_legend, col_map1 = st.columns([1, 4])
+
+        with col_legend:
+
+            # Légende des couleurs
+            st.markdown("**Légende**")
+            legend_items = [
+                ("darkred", "< 2 ⭐"),
+                ("red", "2-3 ⭐"),
+                ("orange", "3-4 ⭐"),
+                ("green", "≥ 4 ⭐")
+            ]
+
+            st.markdown(" ")
+            st.markdown("Notes")
+
+            for color, label in legend_items:
+                st.markdown(
+                    f'<div style="display: flex; align-items: center; margin-bottom: 6px;">'
+                    f'<div style="width: 15px; height: 15px; background-color: {color}; '
+                    f'border-radius: 50%; margin-right: 10px;"></div>'
+                    f'<span>{label}</span></div>',
+                    unsafe_allow_html=True
+                )
+
+            # Légende des tailles (remplace le SVG par des divs)
+            st.markdown(" ")
+            st.markdown("Nombre d’avis")
+
+            st.markdown(
+                """
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <div style="display: flex; align-items: center;">
+                        <div style="width: 10px; height: 10px; background-color: #6A0DAD; border-radius: 50%; margin-right: 10px;"></div>
+                        <span> ≤ 100 </span>
+                    </div>
+                    <div style="display: flex; align-items: center;">
+                        <div style="width: 20px; height: 20px; background-color: #6A0DAD; border-radius: 50%; margin-right: 10px;"></div>
+                        <span> 100 - 1 000</span>
+                    </div>
+                    <div style="display: flex; align-items: center;">
+                        <div style="width: 30px; height: 30px; background-color: #6A0DAD; border-radius: 50%; margin-right: 10px;"></div>
+                        <span> > 1000 </span>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+
+        with col_map1 :
+            map_etat_data = st_folium(carte_etat, width=600, height=500, key="map_etat")
+
+    with col2:
+        st.markdown("## 🏙️ Carte des avis par villes")
+        carte_ville = None
+        map_ville_data = None
+        city_clicked = None
+        state_clicked = None
+        ville_title_displayed = False
+
+        if map_etat_data["last_object_clicked"] is not None:
+            click_lat = map_etat_data["last_object_clicked"]["lat"]
+            click_lng = map_etat_data["last_object_clicked"]["lng"]
+
+            state_clicked = get_closest_state(click_lat, click_lng, coord_etats)
+
+            st.markdown(f"### 📍 {state_clicked}")
+
+            df_state = data[data["customer_state"] == state_clicked]
+
+            note_ville = (
+                df_state.groupby("customer_city")
+                .agg(avis_moyen=("review_score", "mean"), nb_avis=("review_score", "count"))
+                .reset_index()
+            )
+
+            geoloc_villes = (
+                geoloc[geoloc["geolocation_state"] == state_clicked]
+                .groupby("geolocation_city")[["geolocation_lat", "geolocation_lng"]]
+                .mean()
+                .reset_index()
+                .rename(columns={"geolocation_city": "customer_city"})
+            )
+
+            note_ville_coord = pd.merge(note_ville, geoloc_villes, on="customer_city", how="left")
+
+            col_slider, col_map2 = st.columns([1, 4])
+
+            with col_slider:
+                st.markdown("**Filtres**")
+                # Slider pour filtrer les villes selon le nombre d'avis
+                nb_avis_min, nb_avis_max = int(note_ville_coord["nb_avis"].min()), int(note_ville_coord["nb_avis"].max())
+                filtre_nb_avis = st.slider(
+                    "Nombre d'avis",
+                    min_value=nb_avis_min,
+                    max_value=nb_avis_max,
+                    value=(nb_avis_min, nb_avis_max),
+                    step=1
+                )
+
+                # Slider pour filtrer selon la note moyenne
+                note_min, note_max = float(note_ville_coord["avis_moyen"].min()), float(note_ville_coord["avis_moyen"].max())
+                filtre_note = st.slider(
+                    "Note moyenne",
+                    min_value=0.0,
+                    max_value=5.0,
+                    value=(note_min, note_max),
+                    step=0.1
+                )
+
+            with col_map2:
+                # Appliquer les deux filtres
+                note_ville_coord = note_ville_coord[
+                    (note_ville_coord["nb_avis"] >= filtre_nb_avis[0]) &
+                    (note_ville_coord["nb_avis"] <= filtre_nb_avis[1]) &
+                    (note_ville_coord["avis_moyen"] >= filtre_note[0]) &
+                    (note_ville_coord["avis_moyen"] <= filtre_note[1])
+                ]
+
+                lat_center, lng_center = coord_etats[state_clicked]
+                carte_ville = folium.Map(location=[lat_center, lng_center], zoom_start=6, tiles="CartoDB positron")
+
+                for _, row in note_ville_coord.iterrows():
+                    if pd.notna(row["geolocation_lat"]) and pd.notna(row["geolocation_lng"]):
+                        folium.CircleMarker(
+                            location=[row["geolocation_lat"], row["geolocation_lng"]],
+                            radius=4 + row["nb_avis"] / 500,
+                            color=couleur(row["avis_moyen"]),
+                            fill=True,
+                            fill_opacity=0.7,
+                            tooltip=f"{row['customer_city']} - {row['avis_moyen']:.2f} ⭐ ({row['nb_avis']} avis)"
+                        ).add_to(carte_ville)
+
+                map_ville_data = st_folium(carte_ville, width=600, height=500, key="map_ville")
+
+
+            if map_ville_data and map_ville_data["last_object_clicked"] is not None:
+                click_lat = map_ville_data["last_object_clicked"]["lat"]
+                click_lng = map_ville_data["last_object_clicked"]["lng"]
+
+                city_clicked = get_closest_city(click_lat, click_lng, note_ville_coord)
+
+        # Bloc de texte d’instruction
+        if not state_clicked:
+            st.info("ℹ️ Veuillez cliquer sur une région dans la carte de gauche pour voir les avis par ville.")
+
+    # Affichage du tableau (sous les deux cartes)
+    st.markdown("## 📋 Avis par ville")
+    if state_clicked and city_clicked:
+        st.markdown(f"### 📍 {city_clicked}, {state_clicked}")
+
+        # Création des colonnes pour l'affichage côte à côte
+        col1, col2 = st.columns([0.25, 3.75])  # slider à gauche, tableau à droite
+
+        with col1:
+            st.markdown("**Filtre**")
+            note_min, note_max = int(data["review_score"].min()), int(data["review_score"].max())
+            filtre_note = st.slider(
+                "Note",
+                min_value=note_min,
+                max_value=note_max,
+                value=(note_min, note_max),
+                step=1
+            )
+
+        with col2:
+            # Filtrage des avis en fonction de la ville, l'état et la note sélectionnée
+            avis_ville = data[
+                (data["customer_state"] == state_clicked) &
+                (data["customer_city"] == city_clicked) &
+                (data["review_score"] >= filtre_note[0]) &
+                (data["review_score"] <= filtre_note[1])
+            ][["review_comment_title", "review_comment_message", "review_score"]].dropna(subset=["review_comment_message"])
+
+            if avis_ville.empty:
+                st.info("Aucun avis client disponible pour cette ville avec la note sélectionnée.")
+            else:
+                st.dataframe(
+                    avis_ville.rename(columns={
+                        "review_comment_title": "Titre",
+                        "review_comment_message": "Commentaire",
+                        "review_score": "Note"
+                    }),
+                    use_container_width=True
+                )
+
+    else:
+        st.info("ℹ️ Pour afficher le tableau des commentaires, veuillez d'abord cliquer sur une région, puis une ville.")
